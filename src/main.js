@@ -4,17 +4,44 @@ const fs = require('fs');
 
 const CLAUDE_PARTITION = 'persist:claude-monitor';
 const CLAUDE_USAGE_URL = 'https://claude.ai/settings/usage';
+const LOCAL_APP_DATA_PATH = path.join(process.cwd(), '.claude-monitor-data');
+
+app.commandLine.appendSwitch('no-proxy-server');
+app.commandLine.appendSwitch('proxy-server', 'direct://');
+app.commandLine.appendSwitch('proxy-bypass-list', '*');
+app.setPath('userData', LOCAL_APP_DATA_PATH);
+app.setPath('sessionData', path.join(LOCAL_APP_DATA_PATH, 'session'));
+
 const STATE_PATH = path.join(app.getPath('userData'), 'widget-state.json');
+const ICON_PATH = path.join(__dirname, '..', 'build', 'icon.ico');
+const APP_ICON = fs.existsSync(ICON_PATH) ? ICON_PATH : undefined;
+const DEFAULT_WINDOW_WIDTH = 480;
+const DEFAULT_WINDOW_HEIGHT = 210;
+const EXPANDED_WINDOW_HEIGHT = 320;
+const MIN_WINDOW_HEIGHT = 120;
+const REFRESH_INTERVAL_OPTIONS = {
+  15000: '15s',
+  30000: '30s',
+  60000: '1m',
+  120000: '2m',
+  300000: '5m',
+  600000: '10m',
+  1800000: '30m'
+};
 
 let mainWindow;
 let authWindow;
 let tray;
 let refreshTimer;
+let claudeSessionReady;
+let refreshInFlight = null;
+let authWindowShouldStayVisible = false;
 
 const state = {
   connected: false,
   loading: false,
   alwaysOnTop: false,
+  refreshIntervalMs: 300000,
   lastUpdated: null,
   lastError: null,
   metrics: {
@@ -32,8 +59,10 @@ function loadPersistedState() {
   try {
     if (!fs.existsSync(STATE_PATH)) return;
     const data = JSON.parse(fs.readFileSync(STATE_PATH, 'utf8'));
+    const persistedRefreshInterval = Number(data.refreshIntervalMs);
     Object.assign(state, {
       alwaysOnTop: Boolean(data.alwaysOnTop),
+      refreshIntervalMs: REFRESH_INTERVAL_OPTIONS[persistedRefreshInterval] ? persistedRefreshInterval : state.refreshIntervalMs,
       lastUpdated: data.lastUpdated || null,
       metrics: { ...state.metrics, ...(data.metrics || {}) }
     });
@@ -50,6 +79,7 @@ function savePersistedState() {
       JSON.stringify(
         {
           alwaysOnTop: state.alwaysOnTop,
+          refreshIntervalMs: state.refreshIntervalMs,
           lastUpdated: state.lastUpdated,
           metrics: state.metrics
         },
@@ -66,6 +96,8 @@ function savePersistedState() {
 function getRendererState() {
   return {
     ...state,
+    defaultWindowHeight: DEFAULT_WINDOW_HEIGHT,
+    expandedWindowHeight: EXPANDED_WINDOW_HEIGHT,
     themeSource: nativeTheme.shouldUseDarkColors ? 'dark' : 'light'
   };
 }
@@ -104,17 +136,18 @@ function setDisconnected(reason = 'Not connected to Claude yet.') {
 
 function createMainWindow() {
   mainWindow = new BrowserWindow({
-    width: 570,
-    height: 190,
-    minWidth: 520,
-    minHeight: 180,
-    maxHeight: 260,
+    width: DEFAULT_WINDOW_WIDTH,
+    height: DEFAULT_WINDOW_HEIGHT,
+    minWidth: DEFAULT_WINDOW_WIDTH,
+    minHeight: MIN_WINDOW_HEIGHT,
+    maxHeight: EXPANDED_WINDOW_HEIGHT,
     frame: false,
     transparent: false,
-    resizable: true,
+    resizable: false,
     fullscreenable: false,
     maximizable: false,
     show: false,
+    icon: APP_ICON,
     backgroundColor: '#131425',
     title: 'Claude Monitor Widget',
     alwaysOnTop: state.alwaysOnTop,
@@ -160,6 +193,7 @@ function createTray() {
 
 function updateTrayMenu() {
   if (!tray) return;
+  const refreshLabel = REFRESH_INTERVAL_OPTIONS[state.refreshIntervalMs] || '5m';
 
   const menu = Menu.buildFromTemplate([
     {
@@ -174,8 +208,12 @@ function updateTrayMenu() {
       click: () => refreshUsage({ interactive: false })
     },
     {
+      label: `Auto-refresh: ${refreshLabel}`,
+      enabled: false
+    },
+    {
       label: authWindow && !authWindow.isDestroyed() ? 'Show Claude login' : 'Sign in to Claude',
-      click: () => openAuthWindow()
+      click: () => ensureClaudeUsageWindow({ show: true })
     },
     {
       label: state.alwaysOnTop ? 'Unpin widget' : 'Pin widget',
@@ -195,10 +233,25 @@ function getClaudeSession() {
   return session.fromPartition(CLAUDE_PARTITION);
 }
 
-function openAuthWindow() {
+async function ensureClaudeSession() {
+  const claudeSession = getClaudeSession();
+
+  if (!claudeSessionReady) {
+    claudeSessionReady = claudeSession
+      .setProxy({ mode: 'direct' })
+      .catch((error) => {
+        console.warn('Failed to configure direct proxy mode:', error.message);
+      });
+  }
+
+  await claudeSessionReady;
+  return claudeSession;
+}
+
+async function openAuthWindow() {
+  await ensureClaudeSession();
+
   if (authWindow && !authWindow.isDestroyed()) {
-    authWindow.show();
-    authWindow.focus();
     return authWindow;
   }
 
@@ -207,6 +260,7 @@ function openAuthWindow() {
     height: 850,
     minWidth: 960,
     minHeight: 700,
+    show: false,
     autoHideMenuBar: true,
     title: 'Sign in to Claude',
     backgroundColor: '#0f1224',
@@ -236,10 +290,27 @@ function openAuthWindow() {
 
   authWindow.on('closed', () => {
     authWindow = null;
+    authWindowShouldStayVisible = false;
     broadcastState();
   });
 
   return authWindow;
+}
+
+function hasOpenAuthWindow() {
+  return Boolean(authWindow && !authWindow.isDestroyed());
+}
+
+async function ensureClaudeUsageWindow({ show = false } = {}) {
+  const win = await openAuthWindow();
+  authWindowShouldStayVisible = Boolean(show);
+  if (show) {
+    win.show();
+    win.focus();
+  } else if (win.isVisible()) {
+    win.hide();
+  }
+  return win;
 }
 
 function wait(ms) {
@@ -264,6 +335,9 @@ async function attemptScrape(targetWindow, { closeWhenDone }) {
 
       if (result?.ok) {
         setMetrics(result.metrics);
+        if (!authWindowShouldStayVisible && !targetWindow.isDestroyed() && targetWindow.isVisible()) {
+          targetWindow.hide();
+        }
         if (closeWhenDone && !targetWindow.isDestroyed()) {
           targetWindow.close();
         }
@@ -271,6 +345,11 @@ async function attemptScrape(targetWindow, { closeWhenDone }) {
       }
 
       if (result?.needsAuth) {
+        if (!authWindowShouldStayVisible && !targetWindow.isDestroyed()) {
+          targetWindow.show();
+          targetWindow.focus();
+          authWindowShouldStayVisible = true;
+        }
         if (closeWhenDone && !targetWindow.isDestroyed()) {
           targetWindow.close();
         }
@@ -291,58 +370,112 @@ async function attemptScrape(targetWindow, { closeWhenDone }) {
 }
 
 async function refreshUsage({ interactive = false } = {}) {
-  setLoading(true, null);
-
-  if (interactive) {
-    const win = openAuthWindow();
-    win.show();
-    win.focus();
-    state.lastError = 'Sign in to Claude if prompted. The widget will sync automatically once the usage page is visible.';
-    broadcastState();
-    return;
+  if (refreshInFlight) {
+    await refreshInFlight;
+    return getRendererState();
   }
 
-  let scrapeWindow;
-  try {
-    scrapeWindow = new BrowserWindow({
-      show: false,
-      width: 1200,
-      height: 850,
-      webPreferences: {
-        partition: CLAUDE_PARTITION,
-        contextIsolation: true,
-        nodeIntegration: false,
-        sandbox: true
+  refreshInFlight = (async () => {
+    setLoading(true, null);
+
+    if (interactive) {
+      const win = await ensureClaudeUsageWindow({ show: true });
+      state.lastError = 'Sign in to Claude if prompted. The widget will sync automatically once the usage page is visible.';
+      broadcastState();
+      return getRendererState();
+    }
+
+    try {
+      const win = await ensureClaudeUsageWindow({ show: false });
+
+      if (!win || win.isDestroyed()) {
+        setDisconnected('Could not open Claude usage window.');
+        return getRendererState();
       }
-    });
 
-    await scrapeWindow.loadURL(CLAUDE_USAGE_URL);
-    const result = await attemptScrape(scrapeWindow, { closeWhenDone: true });
+      const currentUrl = win.webContents.getURL() || '';
+      if (!/claude\.ai\/settings\/usage/i.test(currentUrl)) {
+        await win.loadURL(CLAUDE_USAGE_URL);
+      } else {
+        await win.webContents.reloadIgnoringCache();
+      }
 
-    if (!result && !state.lastError) {
-      setDisconnected('Could not refresh Claude usage.');
+      const result = await attemptScrape(win, { closeWhenDone: false });
+      if (!result && !state.lastError) {
+        setDisconnected('Could not refresh Claude usage.');
+      }
+    } catch (error) {
+      setDisconnected(`Refresh failed: ${error.message}`);
     }
-  } catch (error) {
-    if (scrapeWindow && !scrapeWindow.isDestroyed()) {
-      scrapeWindow.close();
-    }
-    setDisconnected(`Refresh failed: ${error.message}`);
+
+    return getRendererState();
+  })();
+
+  try {
+    return await refreshInFlight;
+  } finally {
+    refreshInFlight = null;
   }
 }
 
 function toggleAlwaysOnTop() {
-  state.alwaysOnTop = !state.alwaysOnTop;
+  setAlwaysOnTop(!state.alwaysOnTop);
+}
+
+function setAlwaysOnTop(alwaysOnTop) {
+  state.alwaysOnTop = Boolean(alwaysOnTop);
   if (mainWindow && !mainWindow.isDestroyed()) {
     mainWindow.setAlwaysOnTop(state.alwaysOnTop, 'screen-saver');
   }
   broadcastState();
 }
 
+function setRefreshInterval(refreshIntervalMs) {
+  const parsed = Number(refreshIntervalMs);
+  if (!REFRESH_INTERVAL_OPTIONS[parsed]) {
+    return getRendererState();
+  }
+
+  state.refreshIntervalMs = parsed;
+  startRefreshLoop();
+  broadcastState();
+  return getRendererState();
+}
+
 function startRefreshLoop() {
   clearInterval(refreshTimer);
   refreshTimer = setInterval(() => {
     refreshUsage({ interactive: false });
-  }, 5 * 60 * 1000);
+  }, state.refreshIntervalMs);
+}
+
+function resizeWindow(height) {
+  if (!mainWindow || mainWindow.isDestroyed()) return;
+  mainWindow.setResizable(true);
+  mainWindow.setSize(DEFAULT_WINDOW_WIDTH, height, false);
+  mainWindow.setResizable(false);
+}
+
+function setExpandedState(expanded) {
+  resizeWindow(expanded ? EXPANDED_WINDOW_HEIGHT : DEFAULT_WINDOW_HEIGHT);
+}
+
+function resizeWindowToContent(contentHeight) {
+  if (!mainWindow || mainWindow.isDestroyed()) return false;
+
+  const targetHeight = Math.max(
+    MIN_WINDOW_HEIGHT,
+    Math.min(EXPANDED_WINDOW_HEIGHT, Math.ceil(Number(contentHeight) || DEFAULT_WINDOW_HEIGHT))
+  );
+
+  resizeWindow(targetHeight);
+  return true;
+}
+
+function closeAuxiliaryWindows() {
+  if (authWindow && !authWindow.isDestroyed()) {
+    authWindow.close();
+  }
 }
 
 app.whenReady().then(() => {
@@ -366,6 +499,24 @@ app.whenReady().then(() => {
     toggleAlwaysOnTop();
     return getRendererState();
   });
+  ipcMain.handle('monitor:update-settings', async (_event, settings = {}) => {
+    if (Object.prototype.hasOwnProperty.call(settings, 'alwaysOnTop')) {
+      setAlwaysOnTop(settings.alwaysOnTop);
+    }
+
+    if (Object.prototype.hasOwnProperty.call(settings, 'refreshIntervalMs')) {
+      return setRefreshInterval(settings.refreshIntervalMs);
+    }
+
+    return getRendererState();
+  });
+  ipcMain.handle('monitor:set-settings-expanded', async (_event, expanded) => {
+    setExpandedState(expanded);
+    return true;
+  });
+  ipcMain.handle('monitor:resize-window-to-content', async (_event, contentHeight) => {
+    return resizeWindowToContent(contentHeight);
+  });
   ipcMain.handle('monitor:window-action', async (_event, action) => {
     if (!mainWindow || mainWindow.isDestroyed()) return null;
 
@@ -374,7 +525,10 @@ app.whenReady().then(() => {
       if (mainWindow.isMaximized()) mainWindow.unmaximize();
       else mainWindow.maximize();
     }
-    if (action === 'close') mainWindow.close();
+    if (action === 'close') {
+      closeAuxiliaryWindows();
+      mainWindow.close();
+    }
     return getRendererState();
   });
 
@@ -393,5 +547,6 @@ app.on('window-all-closed', () => {
 
 app.on('before-quit', () => {
   clearInterval(refreshTimer);
+  closeAuxiliaryWindows();
   savePersistedState();
 });

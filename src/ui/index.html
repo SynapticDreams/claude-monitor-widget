@@ -7,82 +7,119 @@
     <link rel="stylesheet" href="./styles.css" />
   </head>
   <body>
-    <div class="widget-shell">
+    <div class="widget-shell" id="widgetShell">
       <header class="topbar drag-region">
-        <div class="brand-row">
-          <div class="brand-badge">✦</div>
-          <div>
-            <div class="brand-title">Claude Monitor</div>
-            <div class="brand-subtitle" id="connectionStatus">Connecting…</div>
+        <div class="topbar-left">
+          <div class="brand-badge">
+            <span class="brand-glyph">&#10022;</span>
           </div>
+
+          <div class="brand-title">Claude Monitor</div>
+
+          <div class="brand-subtitle" id="connectionStatus">Connecting...</div>
         </div>
 
         <div class="window-actions no-drag">
-          <button id="loginBtn" class="icon-button" title="Sign in to Claude">↗</button>
-          <button id="refreshBtn" class="icon-button" title="Refresh">⟳</button>
-          <button id="pinBtn" class="icon-button" title="Pin widget">📌</button>
-          <button id="minBtn" class="icon-button" title="Minimize">—</button>
-          <button id="closeBtn" class="icon-button close" title="Close">✕</button>
+          <button id="settingsBtn" class="icon-button" title="Settings">&#9881;</button>
+          <button id="loginBtn" class="icon-button" title="Sign in to Claude">&#8599;</button>
+          <button id="refreshBtn" class="icon-button" title="Refresh">&#10227;</button>
+          <button id="pinBtn" class="icon-button" title="Pin widget">&#128204;</button>
+          <button id="minBtn" class="icon-button" title="Minimize">&#8212;</button>
+          <button id="closeBtn" class="icon-button close" title="Close">&#10005;</button>
         </div>
       </header>
 
-      <div class="metrics-grid">
-        <div class="left-col">
-          <section class="metric-row">
-            <div class="row-label" id="sessionLabel">CURRENT SESSION</div>
-            <div class="row-body">
+      <div class="topbar-divider"></div>
+
+      <main class="dashboard-grid">
+        <section class="metric-card">
+          <div class="metric-body">
+            <div class="metric-progress-column">
+              <div class="metric-label" id="sessionLabel">CURRENT SESSION</div>
               <div class="bar-track">
                 <div id="sessionBar" class="bar-fill purple" style="width: 0%"></div>
               </div>
-              <div id="sessionValue" class="row-value">--%</div>
             </div>
-          </section>
 
-          <section class="metric-row">
-            <div class="row-label" id="weeklyLabel">WEEKLY LIMIT</div>
-            <div class="row-body">
+            <div class="metric-value-block">
+              <div id="sessionValue" class="metric-value">--%</div>
+            </div>
+
+            <div class="metric-side-grid">
+              <div class="metric-side-cell">
+                <div class="metric-side-label">RESETS</div>
+                <div id="elapsedValue" class="metric-side-value">--</div>
+              </div>
+
+              <div class="metric-side-cell">
+                <div class="metric-side-label">TIME</div>
+                <div id="resetsAtValue" class="metric-side-value">--</div>
+              </div>
+            </div>
+          </div>
+        </section>
+
+        <section class="metric-card">
+          <div class="metric-body">
+            <div class="metric-progress-column">
+              <div class="metric-label" id="weeklyLabel">WEEKLY LIMIT</div>
               <div class="bar-track">
                 <div id="weeklyBar" class="bar-fill blue" style="width: 0%"></div>
               </div>
-              <div id="weeklyValue" class="row-value">--%</div>
             </div>
-          </section>
-        </div>
 
-        <div class="right-col">
-          <section class="detail-card">
-            <div class="detail-title">ELAPSED</div>
-            <div class="detail-stack">
-              <div class="ring-wrap">
-                <div id="sessionRing" class="progress-ring purple-ring" style="--progress: 0"></div>
-                <div class="ring-center"></div>
+            <div class="metric-value-block">
+              <div id="weeklyValue" class="metric-value">--%</div>
+            </div>
+
+            <div class="metric-side-grid">
+              <div class="metric-side-cell">
+                <div class="metric-side-label">RESETS</div>
+                <div id="resetsInValue" class="metric-side-value">--</div>
               </div>
-              <div id="elapsedValue" class="detail-value">--</div>
-            </div>
-          </section>
 
-          <section class="detail-card">
-            <div class="detail-title">RESETS IN</div>
-            <div class="detail-stack">
-              <div class="ring-wrap">
-                <div id="weeklyRing" class="progress-ring blue-ring" style="--progress: 0"></div>
-                <div class="ring-center"></div>
+              <div class="metric-side-cell">
+                <div class="metric-side-label">DATE</div>
+                <div id="weeklyDateValue" class="metric-side-value">--</div>
               </div>
-              <div id="resetsInValue" class="detail-value">--</div>
             </div>
-          </section>
-
-          <section class="detail-card">
-            <div class="detail-title">RESETS AT</div>
-            <div id="resetsAtValue" class="detail-value">--</div>
-          </section>
-        </div>
-      </div>
+          </div>
+        </section>
+      </main>
 
       <footer class="footer-row">
-        <div id="helperText" class="helper-text">Open Claude login to connect.</div>
-        <div id="updatedAt" class="updated-at">Never synced</div>
+        <div class="footer-note">
+          <span class="footer-icon">&#128737;</span>
+          <span id="helperText" class="helper-text">Open Claude login to connect.</span>
+        </div>
+
+        <div class="footer-sync">
+          <span id="updatedAt" class="updated-at">Never synced</span>
+          <button id="footerRefreshBtn" class="footer-refresh no-drag" title="Refresh">&#10227;</button>
+        </div>
       </footer>
+
+      <section id="settingsPanel" class="settings-panel is-collapsed">
+        <div class="settings-header">SETTINGS</div>
+
+        <label class="settings-row" for="alwaysOnTopToggle">
+          <span>Always on top</span>
+          <input id="alwaysOnTopToggle" type="checkbox" class="settings-toggle" />
+        </label>
+
+        <label class="settings-row" for="autoRefreshSelect">
+          <span>Auto-refresh</span>
+          <select id="autoRefreshSelect" class="settings-select">
+            <option value="15000">15s</option>
+            <option value="30000">30s</option>
+            <option value="60000">1m</option>
+            <option value="120000">2m</option>
+            <option value="300000">5m</option>
+            <option value="600000">10m</option>
+            <option value="1800000">30m</option>
+          </select>
+        </label>
+      </section>
     </div>
 
     <script src="./app.js"></script>

@@ -3,21 +3,28 @@
   "version": "0.1.0",
   "description": "Cross-platform desktop widget that signs into Claude and reads usage details from claude.ai/settings/usage.",
   "main": "src/main.js",
-  "author": "OpenAI",
+  "author": {
+    "name": "SynapticDreams",
+    "email": "jonathan.james.russell@gmail.com"
+  },
   "license": "MIT",
   "scripts": {
     "start": "electron .",
+    "generate-icon": "electron scripts/generate-icon.js",
     "pack": "electron-builder --dir",
-    "dist": "electron-builder -wl",
+    "dist": "electron-builder",
     "dist:win": "electron-builder --win nsis portable",
-    "dist:linux": "electron-builder --linux AppImage deb"
+    "dist:linux": "electron-builder --linux deb",
+    "dist:linux:deb": "electron-builder --linux deb",
+    "dist:linux:appimage": "electron-builder --linux AppImage",
+    "dist:linux:all": "electron-builder --linux AppImage deb"
   },
   "devDependencies": {
     "electron": "^31.7.7",
     "electron-builder": "^24.13.3"
   },
   "build": {
-    "appId": "com.openai.claude-monitor-widget",
+    "appId": "com.synapticdreams.claude-monitor-widget",
     "productName": "Claude Monitor Widget",
     "directories": {
       "buildResources": "build",
@@ -29,6 +36,7 @@
       "README.md"
     ],
     "win": {
+      "icon": "build/icon.ico",
       "target": [
         "nsis",
         "portable"
@@ -36,11 +44,9 @@
       "artifactName": "${productName}-${version}-${arch}.${ext}"
     },
     "linux": {
-      "target": [
-        "AppImage",
-        "deb"
-      ],
+      "icon": "build/icon.png",
       "category": "Utility",
+      "maintainer": "SynapticDreams <release@example.com>",
       "artifactName": "${productName}-${version}-${arch}.${ext}"
     }
   }

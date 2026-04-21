@@ -1,5 +1,9 @@
-node_modules
-/dist
-/.electron-cache
-/.git
+node_modules/
+dist/
+.electron-cache/
+.git/
+.claude/
+.claude-monitor-data/
+scripts/
 package-lock.json
+.gitignore
