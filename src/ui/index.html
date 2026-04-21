@@ -1,0 +1,90 @@
+<!doctype html>
+<html lang="en">
+  <head>
+    <meta charset="UTF-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+    <title>Claude Monitor Widget</title>
+    <link rel="stylesheet" href="./styles.css" />
+  </head>
+  <body>
+    <div class="widget-shell">
+      <header class="topbar drag-region">
+        <div class="brand-row">
+          <div class="brand-badge">✦</div>
+          <div>
+            <div class="brand-title">Claude Monitor</div>
+            <div class="brand-subtitle" id="connectionStatus">Connecting…</div>
+          </div>
+        </div>
+
+        <div class="window-actions no-drag">
+          <button id="loginBtn" class="icon-button" title="Sign in to Claude">↗</button>
+          <button id="refreshBtn" class="icon-button" title="Refresh">⟳</button>
+          <button id="pinBtn" class="icon-button" title="Pin widget">📌</button>
+          <button id="minBtn" class="icon-button" title="Minimize">—</button>
+          <button id="closeBtn" class="icon-button close" title="Close">✕</button>
+        </div>
+      </header>
+
+      <div class="metrics-grid">
+        <div class="left-col">
+          <section class="metric-row">
+            <div class="row-label" id="sessionLabel">CURRENT SESSION</div>
+            <div class="row-body">
+              <div class="bar-track">
+                <div id="sessionBar" class="bar-fill purple" style="width: 0%"></div>
+              </div>
+              <div id="sessionValue" class="row-value">--%</div>
+            </div>
+          </section>
+
+          <section class="metric-row">
+            <div class="row-label" id="weeklyLabel">WEEKLY LIMIT</div>
+            <div class="row-body">
+              <div class="bar-track">
+                <div id="weeklyBar" class="bar-fill blue" style="width: 0%"></div>
+              </div>
+              <div id="weeklyValue" class="row-value">--%</div>
+            </div>
+          </section>
+        </div>
+
+        <div class="right-col">
+          <section class="detail-card">
+            <div class="detail-title">ELAPSED</div>
+            <div class="detail-stack">
+              <div class="ring-wrap">
+                <div id="sessionRing" class="progress-ring purple-ring" style="--progress: 0"></div>
+                <div class="ring-center"></div>
+              </div>
+              <div id="elapsedValue" class="detail-value">--</div>
+            </div>
+          </section>
+
+          <section class="detail-card">
+            <div class="detail-title">RESETS IN</div>
+            <div class="detail-stack">
+              <div class="ring-wrap">
+                <div id="weeklyRing" class="progress-ring blue-ring" style="--progress: 0"></div>
+                <div class="ring-center"></div>
+              </div>
+              <div id="resetsInValue" class="detail-value">--</div>
+            </div>
+          </section>
+
+          <section class="detail-card">
+            <div class="detail-title">RESETS AT</div>
+            <div id="resetsAtValue" class="detail-value">--</div>
+          </section>
+        </div>
+      </div>
+
+      <footer class="footer-row">
+        <div id="helperText" class="helper-text">Open Claude login to connect.</div>
+        <div id="updatedAt" class="updated-at">Never synced</div>
+      </footer>
+    </div>
+
+    <script src="./app.js"></script>
+  </body>
+</html>

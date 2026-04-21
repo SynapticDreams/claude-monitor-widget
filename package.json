@@ -1,0 +1,47 @@
+{
+  "name": "claude-monitor-widget",
+  "version": "0.1.0",
+  "description": "Cross-platform desktop widget that signs into Claude and reads usage details from claude.ai/settings/usage.",
+  "main": "src/main.js",
+  "author": "OpenAI",
+  "license": "MIT",
+  "scripts": {
+    "start": "electron .",
+    "pack": "electron-builder --dir",
+    "dist": "electron-builder -wl",
+    "dist:win": "electron-builder --win nsis portable",
+    "dist:linux": "electron-builder --linux AppImage deb"
+  },
+  "devDependencies": {
+    "electron": "^31.7.7",
+    "electron-builder": "^24.13.3"
+  },
+  "build": {
+    "appId": "com.openai.claude-monitor-widget",
+    "productName": "Claude Monitor Widget",
+    "directories": {
+      "buildResources": "build",
+      "output": "dist"
+    },
+    "files": [
+      "src/**/*",
+      "package.json",
+      "README.md"
+    ],
+    "win": {
+      "target": [
+        "nsis",
+        "portable"
+      ],
+      "artifactName": "${productName}-${version}-${arch}.${ext}"
+    },
+    "linux": {
+      "target": [
+        "AppImage",
+        "deb"
+      ],
+      "category": "Utility",
+      "artifactName": "${productName}-${version}-${arch}.${ext}"
+    }
+  }
+}
